@@ -3,11 +3,7 @@ from flask_cors import CORS
 import qrcode
 import uuid
 import json
-from pyzbar.pyzbar import decode
-from PIL import Image
 import os
-import base64
-import io
 
 app = Flask(__name__)
 CORS(app)
@@ -61,62 +57,31 @@ def download_qr(ticket_id):
     return jsonify({"error": "QR-код не найден"}), 404
 
 
-@app.route("/verify", methods=["POST"])
-def verify_ticket():
-    try:
-        data = request.json
-        if not data or 'image' not in data:
-            return jsonify({"error": "Изображение не найдено в запросе"}), 400
+@app.route("/check", methods=["POST"])
+def check_ticket():
+    ticket_id = request.json.get("ticket_id")
+    tickets = load_tickets()
 
-        # Извлекаем base64 часть
-        image_data = data['image']
-        if ',' in image_data:
-            image_data = image_data.split(',')[1]
-
-        # Декодируем base64 в изображение
-        image_bytes = base64.b64decode(image_data)
-        img = Image.open(io.BytesIO(image_bytes))
-
-        # Сканируем QR код
-        decoded_objects = decode(img)
-
-        if not decoded_objects:
-            return jsonify({
-                "status": "error",
-                "message": "QR-код не обнаружен"
-            })
-
-        # Получаем ID билета из QR-кода
-        ticket_id = decoded_objects[0].data.decode("utf-8")
-
-        # Проверяем билет в базе данных
-        tickets = load_tickets()
-        if ticket_id not in tickets:
-            return jsonify({
-                "status": "invalid",
-                "message": "❌ Недействительный билет. Такого билета не существует."
-            })
-
-        if tickets[ticket_id]["used"]:
-            return jsonify({
-                "status": "used",
-                "message": "❌ Билет уже был использован!"
-            })
-
-        # Отмечаем билет как использованный
-        tickets[ticket_id]["used"] = True
-        save_tickets(tickets)
-
+    if ticket_id not in tickets:
         return jsonify({
-            "status": "valid",
-            "message": "✅ Билет действителен. Проходите!"
+            "status": "invalid",
+            "message": "❌ Недействительный билет. Такого билета не существует."
         })
 
-    except Exception as e:
+    if tickets[ticket_id]["used"]:
         return jsonify({
-            "status": "error",
-            "message": f"Ошибка при проверке билета: {str(e)}"
+            "status": "used",
+            "message": "❌ Билет уже был использован!"
         })
+
+    # Отмечаем билет как использованный
+    tickets[ticket_id]["used"] = True
+    save_tickets(tickets)
+
+    return jsonify({
+        "status": "valid",
+        "message": "✅ Билет действителен. Проходите!"
+    })
 
 
 @app.route("/")
