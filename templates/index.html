@@ -12,6 +12,7 @@
             max-width: 640px;
             margin: 0 auto;
         }
+
         .notification {
             position: fixed;
             top: 50%;
@@ -27,26 +28,40 @@
             min-width: 300px;
             white-space: pre-line;
         }
+
         .notification-success {
             background-color: #28a745;
         }
+
         .notification-error {
             background-color: #dc3545;
         }
+
         .notification-warning {
             background-color: #ffc107;
             color: black;
         }
+
         @keyframes fadeInOut {
-            0% { opacity: 0; }
-            15% { opacity: 1; }
-            85% { opacity: 1; }
-            100% { opacity: 0; }
+            0% {
+                opacity: 0;
+            }
+            15% {
+                opacity: 1;
+            }
+            85% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
         }
+
         .status-icon {
             font-size: 48px;
             margin-bottom: 10px;
         }
+
         #debug-info {
             position: fixed;
             bottom: 10px;
@@ -57,134 +72,145 @@
     </style>
 </head>
 <body class="container mt-5">
-    <h1 class="text-center mb-4">Сканер QR-билетов</h1>
+<h1 class="text-center mb-4">Сканер QR-билетов</h1>
 
-    <div class="d-flex justify-content-center mb-4">
-        <button id="start-scan" class="btn btn-primary">Открыть сканер</button>
-        <button id="stop-scan" class="btn btn-danger ms-2 d-none">Закрыть сканер</button>
-    </div>
+<div class="d-flex justify-content-center mb-4">
+    <button id="start-scan" class="btn btn-primary">Открыть сканер</button>
+    <button id="stop-scan" class="btn btn-danger ms-2 d-none">Закрыть сканер</button>
+</div>
 
-    <div id="reader" class="d-none"></div>
-    <div id="notification-container"></div>
-    <div id="debug-info"></div>
+<div id="reader" class="d-none"></div>
+<div id="notification-container"></div>
+<div id="debug-info"></div>
 
-    <script>
-        const apiBase = 'http://localhost:5000';
-        let html5QrcodeScanner = null;
-        let lastScannedResult = null;
-        let lastScanTime = 0;
-        const scanCooldown = 2500; // Задержка в 2.5 секунды
+<script>
+    const apiBase = 'http://localhost:5000';
+    let html5QrcodeScanner = null;
+    let lastScannedResult = null;
+    let lastScanTime = 0;
+    const scanCooldown = 2500;
 
-        function updateDebugInfo(info) {
-            const debugDiv = document.getElementById('debug-info');
-            debugDiv.textContent = info;
+    function updateDebugInfo(info) {
+        const debugDiv = document.getElementById('debug-info');
+        debugDiv.textContent = info;
+    }
+
+    function showNotification(message, type) {
+        const container = document.getElementById('notification-container');
+        container.innerHTML = '';
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+
+        let icon = '';
+        switch (type) {
+            case 'success':
+                icon = '✅';
+                break;
+            case 'error':
+                icon = '❌';
+                break;
+            case 'warning':
+                icon = '⚠️';
+                break;
         }
 
-        function showNotification(message, type) {
-            const container = document.getElementById('notification-container');
-            container.innerHTML = ''; // Очищаем предыдущие уведомления
-            const notification = document.createElement('div');
-            notification.className = `notification notification-${type}`;
-
-            let icon = '';
-            switch(type) {
-                case 'success':
-                    icon = '✅';
-                    break;
-                case 'error':
-                    icon = '❌';
-                    break;
-                case 'warning':
-                    icon = '⚠️';
-                    break;
-            }
-
-            notification.innerHTML = `
+        notification.innerHTML = `
                 <div class="status-icon">${icon}</div>
                 <div>${message}</div>
             `;
-            container.appendChild(notification);
-            setTimeout(() => {
-                notification.remove();
-            }, 2500);
-        }
+        container.appendChild(notification);
+        setTimeout(() => {
+            notification.remove();
+        }, 2500);
+    }
 
-        async function verifyTicket(ticketId) {
-            try {
-                updateDebugInfo(`Проверка билета: ${ticketId}`);
-                const response = await fetch(`${apiBase}/check`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ ticket_id: ticketId })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                updateDebugInfo(`Ответ сервера: ${JSON.stringify(data)}`);
-
-                switch(data.status) {
-                    case 'valid':
-                        showNotification('Билет активирован\nПроходите!', 'success');
-                        break;
-                    case 'used':
-                        showNotification('Билет уже был использован!', 'warning');
-                        break;
-                    case 'invalid':
-                        showNotification('Билет не найден', 'error');
-                        break;
-                    default:
-                        showNotification('Ошибка проверки билета', 'error');
-                }
-            } catch (error) {
-                console.error('Error verifying ticket:', error);
-                updateDebugInfo(`Ошибка: ${error.message}`);
-                showNotification('Ошибка проверки билета', 'error');
-            }
-        }
-
-        async function onScanSuccess(decodedText, decodedResult) {
-            const currentTime = Date.now();
-            if (currentTime - lastScanTime > scanCooldown && decodedText !== lastScannedResult) {
-                lastScannedResult = decodedText;
-                lastScanTime = currentTime;
-                console.log("Scanned:", decodedText); // Проверка сканированного значения
-                await verifyTicket(decodedText);
-            }
-        }
-
-        document.getElementById('start-scan').addEventListener('click', () => {
-            document.getElementById('reader').classList.remove('d-none');
-            document.getElementById('start-scan').classList.add('d-none');
-            document.getElementById('stop-scan').classList.remove('d-none');
-
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader",
-                {
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0
-                }
-            );
-
-            html5QrcodeScanner.render(onScanSuccess, (error) => {
-                // console.warn("QR code scan error:", error); // Можно раскомментировать для отладки ошибок сканирования
+    async function verifyTicket(ticketId) {
+        try {
+            updateDebugInfo(`Проверка билета: ${ticketId}`);
+            const response = await fetch(`${apiBase}/check`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ticket_id: ticketId})
             });
-        });
 
-        document.getElementById('stop-scan').addEventListener('click', () => {
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.clear();
-                html5QrcodeScanner = null;
-                document.getElementById('reader').classList.add('d-none');
-                document.getElementById('start-scan').classList.remove('d-none');
-                document.getElementById('stop-scan').classList.add('d-none');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
+
+            const data = await response.json();
+            updateDebugInfo(`Ответ сервера: ${JSON.stringify(data)}`);
+
+            switch (data.status) {
+                case 'valid':
+                    showNotification('Билет активирован\nПроходите!', 'success');
+                    break;
+                case 'used':
+                    showNotification('Билет уже был использован!', 'warning');
+                    break;
+                case 'invalid':
+                    showNotification('Это недействительный QR-код билета.', 'error'); // Более понятное сообщение
+                    break;
+                default:
+                    showNotification('Ошибка проверки билета', 'error');
+            }
+        } catch (error) {
+            console.error('Error verifying ticket:', error);
+            updateDebugInfo(`Ошибка: ${error.message}`);
+            showNotification('Ошибка проверки билета', 'error');
+        }
+    }
+
+    // Функция для проверки, является ли строка похожей на UUID
+    function isValidUUID(str) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    }
+
+    async function onScanSuccess(decodedText, decodedResult) {
+        const currentTime = Date.now();
+        if (currentTime - lastScanTime > scanCooldown && decodedText !== lastScannedResult) {
+            lastScannedResult = decodedText;
+            lastScanTime = currentTime;
+            console.log("Scanned:", decodedText);
+
+            // Добавляем проверку на подобие UUID перед отправкой на сервер
+            if (isValidUUID(decodedText)) {
+                await verifyTicket(decodedText);
+            } else {
+                showNotification('Это не QR-код билета.', 'error'); // Сообщение, если формат не похож на UUID
+            }
+        }
+    }
+
+    document.getElementById('start-scan').addEventListener('click', () => {
+        document.getElementById('reader').classList.remove('d-none');
+        document.getElementById('start-scan').classList.add('d-none');
+        document.getElementById('stop-scan').classList.remove('d-none');
+
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader",
+            {
+                fps: 10,
+                qrbox: {width: 250, height: 250},
+                aspectRatio: 1.0
+            }
+        );
+
+        html5QrcodeScanner.render(onScanSuccess, (error) => {
+            // console.warn("QR code scan error:", error);
         });
-    </script>
+    });
+
+    document.getElementById('stop-scan').addEventListener('click', () => {
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.clear();
+            html5QrcodeScanner = null;
+            document.getElementById('reader').classList.add('d-none');
+            document.getElementById('start-scan').classList.remove('d-none');
+            document.getElementById('stop-scan').classList.add('d-none');
+        }
+    });
+</script>
 </body>
 </html>
