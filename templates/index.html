@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telegram Mini App QR Scanner</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+        #qr-video {
+            width: 100%;
+        }
+        .scanner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #fff;
+        }
+    </style>
 </head>
 <body class="container mt-5">
     <h1>QR Ticket Manager</h1>
@@ -16,49 +36,114 @@
     <div class="mt-5">
         <h3>Scan Ticket</h3>
         <button id="start-scan" class="btn btn-success">Open Camera</button>
-        <div id="reader" class="mt-3" style="width: 300px;"></div>
+        <button id="stop-scan" class="btn btn-danger d-none">Stop Camera</button>
+        <div id="video-container" class="mt-3 d-none">
+            <video id="qr-video" playsinline></video>
+            <div class="scanner-overlay"></div>
+        </div>
         <div id="scan-result" class="mt-3"></div>
     </div>
 
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <script>
         const apiBase = 'http://localhost:5000';
+        let videoStream = null;
 
+        // Генерация QR-кода
         document.getElementById('generate').addEventListener('click', async () => {
-            const response = await fetch(`${apiBase}/generate`, { method: 'POST' });
-            const data = await response.json();
-            document.getElementById('qr-code').innerHTML = `<img src="${apiBase}/${data.qr_code}" alt="QR Code" />`;
+            try {
+                const response = await fetch(`${apiBase}/generate`, { method: 'POST' });
+                const data = await response.json();
+                document.getElementById('qr-code').innerHTML =
+                    `<img src="${apiBase}${data.qr_code_url}" alt="QR Code" />`;
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                alert('Error generating QR code');
+            }
         });
 
-        document.getElementById('start-scan').addEventListener('click', () => {
-            const html5QrCode = new Html5Qrcode("reader");
+        // Функция для захвата кадра с видео
+        async function captureFrame(video) {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            return canvas.toDataURL('image/jpeg', 0.8);
+        }
 
-            const qrCodeSuccessCallback = async (decodedText) => {
-                html5QrCode.stop();
-                const response = await fetch(`${apiBase}/check`, {
+        // Функция для сканирования QR-кода
+        async function scanQRCode(imageData) {
+            try {
+                const response = await fetch(`${apiBase}/scan`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticket_id: decodedText }),
+                    body: JSON.stringify({ image: imageData })
                 });
                 const data = await response.json();
-                document.getElementById('scan-result').textContent = data.message;
-            };
 
-            const qrCodeErrorCallback = (error) => {
-                console.warn(`QR code scan error: ${error}`);
-            };
+                if (data.ticket_id) {
+                    // Проверяем билет
+                    const checkResponse = await fetch(`${apiBase}/check`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticket_id: data.ticket_id })
+                    });
+                    const checkData = await checkResponse.json();
+                    document.getElementById('scan-result').textContent = checkData.message;
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error scanning QR code:', error);
+                return false;
+            }
+        }
 
-            // Стартуем камеру
-            html5QrCode.start(
-                { facingMode: "environment" }, // Камера по умолчанию - задняя
-                { fps: 10, qrbox: 250 },
-                qrCodeSuccessCallback,
-                qrCodeErrorCallback
-            ).catch(err => {
-                console.error(`Unable to start scanning: ${err}`);
-                alert("Ошибка при запуске камеры. Пожалуйста, разрешите доступ к камере.");
-            });
+        // Запуск камеры
+        document.getElementById('start-scan').addEventListener('click', async () => {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+
+                const video = document.getElementById('qr-video');
+                video.srcObject = videoStream;
+                await video.play();
+
+                document.getElementById('video-container').classList.remove('d-none');
+                document.getElementById('start-scan').classList.add('d-none');
+                document.getElementById('stop-scan').classList.remove('d-none');
+
+                // Периодическое сканирование кадров
+                const scanInterval = setInterval(async () => {
+                    if (videoStream) {
+                        const imageData = await captureFrame(video);
+                        const success = await scanQRCode(imageData);
+                        if (success) {
+                            clearInterval(scanInterval);
+                            stopCamera();
+                        }
+                    }
+                }, 1000);
+
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                alert('Error accessing camera. Please make sure you have granted camera permissions.');
+            }
         });
+
+        // Остановка камеры
+        function stopCamera() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+                document.getElementById('video-container').classList.add('d-none');
+                document.getElementById('start-scan').classList.remove('d-none');
+                document.getElementById('stop-scan').classList.add('d-none');
+            }
+        }
+
+        document.getElementById('stop-scan').addEventListener('click', stopCamera);
     </script>
 </body>
 </html>
