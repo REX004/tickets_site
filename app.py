@@ -80,9 +80,15 @@ def check_ticket():
 # Сканирование QR-кода
 @app.route("/scan", methods=["POST"])
 def scan_qr():
+
     file = request.files["file"]
     img = Image.open(file)
     decoded_objects = decode(img)
+    try:
+        img = Image.open(file)
+    except Exception as e:
+        return jsonify({"error": "Ошибка при обработке изображения!"}), 400
+
     for obj in decoded_objects:
         return jsonify({"ticket_id": obj.data.decode("utf-8")})
     return jsonify({"error": "QR-код не найден!"})
