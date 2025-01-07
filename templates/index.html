@@ -12,27 +12,39 @@
             max-width: 640px;
             margin: 0 auto;
         }
-        #scan-result {
-            font-size: 1.2em;
-            font-weight: bold;
+        .notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            font-size: 24px;
             text-align: center;
-            padding: 15px;
-            margin-top: 20px;
-            border-radius: 5px;
+            z-index: 1000;
+            animation: fadeInOut 2.5s ease-in-out;
+            min-width: 300px;
         }
-        .result-valid {
-            background-color: #d4edda;
-            color: #155724;
+        .notification-success {
+            background-color: #28a745;
         }
-        .result-invalid {
-            background-color: #f8d7da;
-            color: #721c24;
+        .notification-error {
+            background-color: #dc3545;
         }
-        .status-text {
-            font-size: 0.9em;
-            color: #6c757d;
-            text-align: center;
-            margin-top: 10px;
+        .notification-warning {
+            background-color: #ffc107;
+            color: black;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            15% { opacity: 1; }
+            85% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .status-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -45,17 +57,46 @@
     </div>
 
     <div id="reader" class="d-none"></div>
-    <div id="scan-result" class="d-none"></div>
-    <div id="status" class="status-text">Наведите камеру на QR-код билета</div>
+    <div id="notification-container"></div>
 
     <script>
         const apiBase = 'http://localhost:5000';
         let html5QrcodeScanner = null;
         let lastScannedResult = null;
         let lastScanTime = 0;
-        const scanCooldown = 2000; // 2 секунды между сканированиями
+        const scanCooldown = 2500;
 
-        // Функция для проверки билета
+        function showNotification(message, type) {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+
+            let icon = '';
+            switch(type) {
+                case 'success':
+                    icon = '✅';
+                    break;
+                case 'error':
+                    icon = '❌';
+                    break;
+                case 'warning':
+                    icon = '⚠️';
+                    break;
+            }
+
+            notification.innerHTML = `
+                <div class="status-icon">${icon}</div>
+                <div>${message}</div>
+            `;
+
+            container.appendChild(notification);
+
+            // Удаляем уведомление после анимации
+            setTimeout(() => {
+                notification.remove();
+            }, 2500);
+        }
+
         async function verifyTicket(ticketId) {
             try {
                 const response = await fetch(`${apiBase}/check`, {
@@ -65,27 +106,28 @@
                 });
                 const data = await response.json();
 
-                const resultDiv = document.getElementById('scan-result');
-                resultDiv.textContent = data.message;
-                resultDiv.classList.remove('d-none');
-                resultDiv.classList.remove('result-valid', 'result-invalid');
-
-                if (data.status === 'valid') {
-                    resultDiv.classList.add('result-valid');
-                    new Audio('https://assets.mixkit.co/active_storage/sfx/2190/2190-preview.mp3').play().catch(() => {});
-                } else {
-                    resultDiv.classList.add('result-invalid');
-                    new Audio('https://assets.mixkit.co/active_storage/sfx/2193/2193-preview.mp3').play().catch(() => {});
+                switch(data.status) {
+                    case 'valid':
+                        showNotification('Билет активирован\nПроходите!', 'success');
+                        break;
+                    case 'used':
+                        showNotification('Билет уже был использован!', 'warning');
+                        break;
+                    case 'invalid':
+                        showNotification('Билет не найден', 'error');
+                        break;
+                    default:
+                        showNotification('Ошибка проверки билета', 'error');
                 }
 
                 return data;
             } catch (error) {
+                showNotification('Ошибка проверки билета', 'error');
                 console.error('Error verifying ticket:', error);
                 return null;
             }
         }
 
-        // Обработчик успешного сканирования
         async function onScanSuccess(decodedText, decodedResult) {
             const currentTime = Date.now();
             if (currentTime - lastScanTime > scanCooldown && decodedText !== lastScannedResult) {
@@ -95,12 +137,10 @@
             }
         }
 
-        // Запуск сканера
         document.getElementById('start-scan').addEventListener('click', () => {
             document.getElementById('reader').classList.remove('d-none');
             document.getElementById('start-scan').classList.add('d-none');
             document.getElementById('stop-scan').classList.remove('d-none');
-            document.getElementById('scan-result').classList.add('d-none');
 
             html5QrcodeScanner = new Html5QrcodeScanner(
                 "reader",
@@ -116,7 +156,6 @@
             });
         });
 
-        // Остановка сканера
         document.getElementById('stop-scan').addEventListener('click', () => {
             if (html5QrcodeScanner) {
                 html5QrcodeScanner.clear();
@@ -124,10 +163,8 @@
                 document.getElementById('reader').classList.add('d-none');
                 document.getElementById('start-scan').classList.remove('d-none');
                 document.getElementById('stop-scan').classList.add('d-none');
-                document.getElementById('scan-result').classList.add('d-none');
-                document.getElementById('status').textContent = 'Наведите камеру на QR-код билета';
             }
         });
     </script>
 </body>
-</html>
+</html>п
