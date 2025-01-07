@@ -4,9 +4,11 @@ import qrcode
 import uuid
 import json
 import os
+import logging
 
 app = Flask(__name__)
 CORS(app)
+logging.basicConfig(level=logging.DEBUG)
 
 DATABASE_FILE = "tickets.json"
 QR_CODES_FOLDER = "qr_codes"
@@ -46,6 +48,7 @@ def generate_qr():
     tickets[ticket_id] = {"used": False}
     save_tickets(tickets)
 
+    logging.debug(f"Generated ticket: {ticket_id}")
     return jsonify({"ticket_id": ticket_id, "qr_code_url": f"/download/{ticket_id}"})
 
 
@@ -59,28 +62,41 @@ def download_qr(ticket_id):
 
 @app.route("/check", methods=["POST"])
 def check_ticket():
-    ticket_id = request.json.get("ticket_id")
+    data = request.get_json()
+    if not data or 'ticket_id' not in data:
+        logging.error("No ticket_id in request")
+        return jsonify({
+            "status": "error",
+            "message": "Отсутствует ID билета"
+        }), 400
+
+    ticket_id = data['ticket_id']
+    logging.debug(f"Checking ticket: {ticket_id}")
+
     tickets = load_tickets()
+    logging.debug(f"All tickets: {tickets}")
 
     if ticket_id not in tickets:
+        logging.debug(f"Ticket {ticket_id} not found in database")
         return jsonify({
             "status": "invalid",
-            "message": "❌ Недействительный билет. Такого билета не существует."
+            "message": "Билет не найден"
         })
 
     if tickets[ticket_id]["used"]:
+        logging.debug(f"Ticket {ticket_id} already used")
         return jsonify({
             "status": "used",
-            "message": "❌ Билет уже был использован!"
+            "message": "Билет уже был использован!"
         })
 
-    # Отмечаем билет как использованный
     tickets[ticket_id]["used"] = True
     save_tickets(tickets)
+    logging.debug(f"Ticket {ticket_id} validated successfully")
 
     return jsonify({
         "status": "valid",
-        "message": "✅ Билет действителен. Проходите!"
+        "message": "Билет активирован\nПроходите!"
     })
 
 
@@ -90,4 +106,4 @@ def home():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
