@@ -10,7 +10,12 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# Путь к файлу базы данных
 DATABASE_FILE = "tickets.json"
+
+# Создание папки для QR-кодов
+QR_CODES_FOLDER = "qr_codes"
+os.makedirs(QR_CODES_FOLDER, exist_ok=True)
 
 # Загрузка базы данных
 def load_tickets():
@@ -28,8 +33,10 @@ def save_tickets(tickets):
 # Генерация QR-кода
 @app.route("/generate", methods=["POST"])
 def generate_qr():
-    ticket_id = str(uuid.uuid4())
-    output_file = f"qr_codes/{ticket_id}.png"
+    ticket_id = str(uuid.uuid4())  # Уникальный идентификатор билета
+    output_file = os.path.join(QR_CODES_FOLDER, f"{ticket_id}.png")
+
+    # Генерация QR-кода
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -46,7 +53,15 @@ def generate_qr():
     tickets[ticket_id] = {"used": False}
     save_tickets(tickets)
 
-    return jsonify({"ticket_id": ticket_id, "qr_code": output_file})
+    return jsonify({"ticket_id": ticket_id, "qr_code_url": f"/download/{ticket_id}"})
+
+# Скачивание QR-кода
+@app.route("/download/<ticket_id>", methods=["GET"])
+def download_qr(ticket_id):
+    file_path = os.path.join(QR_CODES_FOLDER, f"{ticket_id}.png")
+    if os.path.exists(file_path):
+        return send_file(file_path, mimetype="image/png")
+    return jsonify({"error": "QR-код не найден"}), 404
 
 # Проверка билета
 @app.route("/check", methods=["POST"])
@@ -72,10 +87,10 @@ def scan_qr():
         return jsonify({"ticket_id": obj.data.decode("utf-8")})
     return jsonify({"error": "QR-код не найден!"})
 
+# Главная страница
 @app.route("/")
 def home():
     return render_template("index.html")
 
 if __name__ == "__main__":
-    os.makedirs("qr_codes", exist_ok=True)
     app.run(host="0.0.0.0", port=5000)
