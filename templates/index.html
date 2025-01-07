@@ -73,7 +73,7 @@
         let html5QrcodeScanner = null;
         let lastScannedResult = null;
         let lastScanTime = 0;
-        const scanCooldown = 2500;
+        const scanCooldown = 2500; // Задержка в 2.5 секунды
 
         function updateDebugInfo(info) {
             const debugDiv = document.getElementById('debug-info');
@@ -82,9 +82,7 @@
 
         function showNotification(message, type) {
             const container = document.getElementById('notification-container');
-            // Очищаем предыдущие уведомления
-            container.innerHTML = '';
-
+            container.innerHTML = ''; // Очищаем предыдущие уведомления
             const notification = document.createElement('div');
             notification.className = `notification notification-${type}`;
 
@@ -105,9 +103,7 @@
                 <div class="status-icon">${icon}</div>
                 <div>${message}</div>
             `;
-
             container.appendChild(notification);
-
             setTimeout(() => {
                 notification.remove();
             }, 2500);
@@ -156,6 +152,7 @@
             if (currentTime - lastScanTime > scanCooldown && decodedText !== lastScannedResult) {
                 lastScannedResult = decodedText;
                 lastScanTime = currentTime;
+                console.log("Scanned:", decodedText); // Проверка сканированного значения
                 await verifyTicket(decodedText);
             }
         }
@@ -175,7 +172,7 @@
             );
 
             html5QrcodeScanner.render(onScanSuccess, (error) => {
-                // Игнорируем ошибки сканирования
+                // console.warn("QR code scan error:", error); // Можно раскомментировать для отладки ошибок сканирования
             });
         });
 
