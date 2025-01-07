@@ -1,5 +1,3 @@
-import io
-
 from flask import Flask, jsonify, request, send_file, render_template
 from flask_cors import CORS
 import qrcode
@@ -9,20 +7,16 @@ from pyzbar.pyzbar import decode
 from PIL import Image
 import os
 import base64
-import re
+import io
 
 app = Flask(__name__)
 CORS(app)
 
-# Путь к файлу базы данных
 DATABASE_FILE = "tickets.json"
-
-# Создание папки для QR-кодов
 QR_CODES_FOLDER = "qr_codes"
 os.makedirs(QR_CODES_FOLDER, exist_ok=True)
 
 
-# Загрузка базы данных
 def load_tickets():
     try:
         with open(DATABASE_FILE, "r") as f:
@@ -31,13 +25,11 @@ def load_tickets():
         return {}
 
 
-# Сохранение базы данных
 def save_tickets(tickets):
     with open(DATABASE_FILE, "w") as f:
         json.dump(tickets, f)
 
 
-# Генерация QR-кода
 @app.route("/generate", methods=["POST"])
 def generate_qr():
     ticket_id = str(uuid.uuid4())
@@ -61,7 +53,6 @@ def generate_qr():
     return jsonify({"ticket_id": ticket_id, "qr_code_url": f"/download/{ticket_id}"})
 
 
-# Скачивание QR-кода
 @app.route("/download/<ticket_id>", methods=["GET"])
 def download_qr(ticket_id):
     file_path = os.path.join(QR_CODES_FOLDER, f"{ticket_id}.png")
@@ -70,24 +61,8 @@ def download_qr(ticket_id):
     return jsonify({"error": "QR-код не найден"}), 404
 
 
-# Проверка билета
-@app.route("/check", methods=["POST"])
-def check_ticket():
-    ticket_id = request.json.get("ticket_id")
-    tickets = load_tickets()
-    if ticket_id in tickets:
-        if not tickets[ticket_id]["used"]:
-            tickets[ticket_id]["used"] = True
-            save_tickets(tickets)
-            return jsonify({"status": "valid", "message": "Билет подтверждён!"})
-        else:
-            return jsonify({"status": "used", "message": "Билет уже был использован."})
-    return jsonify({"status": "invalid", "message": "Билет не найден."})
-
-
-# Сканирование QR-кода из base64 изображения
-@app.route("/scan", methods=["POST"])
-def scan_qr():
+@app.route("/verify", methods=["POST"])
+def verify_ticket():
     try:
         data = request.json
         if not data or 'image' not in data:
@@ -105,15 +80,45 @@ def scan_qr():
         # Сканируем QR код
         decoded_objects = decode(img)
 
-        if decoded_objects:
-            return jsonify({"ticket_id": decoded_objects[0].data.decode("utf-8")})
-        return jsonify({"error": "QR-код не найден!"}), 404
+        if not decoded_objects:
+            return jsonify({
+                "status": "error",
+                "message": "QR-код не обнаружен"
+            })
+
+        # Получаем ID билета из QR-кода
+        ticket_id = decoded_objects[0].data.decode("utf-8")
+
+        # Проверяем билет в базе данных
+        tickets = load_tickets()
+        if ticket_id not in tickets:
+            return jsonify({
+                "status": "invalid",
+                "message": "❌ Недействительный билет. Такого билета не существует."
+            })
+
+        if tickets[ticket_id]["used"]:
+            return jsonify({
+                "status": "used",
+                "message": "❌ Билет уже был использован!"
+            })
+
+        # Отмечаем билет как использованный
+        tickets[ticket_id]["used"] = True
+        save_tickets(tickets)
+
+        return jsonify({
+            "status": "valid",
+            "message": "✅ Билет действителен. Проходите!"
+        })
 
     except Exception as e:
-        return jsonify({"error": f"Ошибка при обработке изображения: {str(e)}"}), 400
+        return jsonify({
+            "status": "error",
+            "message": f"Ошибка при проверке билета: {str(e)}"
+        })
 
 
-# Главная страница
 @app.route("/")
 def home():
     return render_template("index.html")
