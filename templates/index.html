@@ -22,12 +22,12 @@
 
 <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
 <script>
-    const apiBase = 'http://localhost:5000';
-
-    // Проверяем доступ к камере через Telegram Web App API
-    if (Telegram.WebApp) {
+    // Проверка, доступен ли Telegram WebApp SDK
+    if (window.Telegram && window.Telegram.WebApp) {
         Telegram.WebApp.ready();
     }
+
+    const apiBase = 'http://localhost:5000';
 
     document.getElementById('generate').addEventListener('click', async () => {
         const response = await fetch(`${apiBase}/generate`, {method: 'POST'});
@@ -53,6 +53,7 @@
             console.warn(`QR code scan error: ${error}`);
         };
 
+        // Стартуем камеру
         html5QrCode.start(
             {facingMode: "environment"}, // Камера по умолчанию - задняя
             {fps: 10, qrbox: 250},
